@@ -1,0 +1,13 @@
+[package]
+name = "spcli"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = { version = "0.4.19", features = ["serde"] }
+clap = { version = "4.4.11", features = ["derive"] }
+rspotify = {version = "0.12.0", features = ["env-file", "cli", "client-reqwest"]}
+tokio = {version = "1.35.0",  features = ["rt-multi-thread", "macros"]}
+
