@@ -50,11 +50,29 @@ async fn get_pb_ctx(spotify: &AuthCodeSpotify) -> Option<CurrentPlaybackContext>
     }
 }
 
-async fn get_devices(spotify: &AuthCodeSpotify) -> Vec<Device> {
+async fn get_device(spotify: &AuthCodeSpotify, prefered_dev: Option<String>) -> Device {
     let req = spotify.device().await;
-    match req {
+    let devs = match req {
         Ok(devs) => devs,
         Err(e) => panic!("bad devices req: {}", e),
+    };
+
+    if devs.is_empty() {
+        panic!("Requested device list empty");
+    }
+
+    match prefered_dev {
+        None => devs[0].clone(),
+        Some(pdev) => {
+            let filt_devs: Vec<Device> = devs.into_iter().filter(|d| d.name == pdev).collect();
+
+            if filt_devs.is_empty() {
+                panic!("Requested device list empty");
+            } else if filt_devs.len() > 1 {
+                panic!("Found more than one dev with name {}", pdev);
+            }
+            filt_devs[0].clone()
+        }
     }
 }
 
@@ -77,7 +95,7 @@ async fn prev_track(spotify: &AuthCodeSpotify) {
 async fn toggle_playback(
     spotify: &AuthCodeSpotify,
     pb_ctx: Option<CurrentPlaybackContext>,
-    devs: Vec<Device>,
+    dev: Device,
 ) {
     let req: ClientResult<()> = match pb_ctx {
         Some(pb_ctx) => {
@@ -87,7 +105,7 @@ async fn toggle_playback(
                 spotify.resume_playback(None, None).await
             }
         }
-        None => start_new_pb(&spotify, devs[0].id.as_deref()).await,
+        None => start_new_pb(&spotify, dev.id.as_deref()).await,
     };
 
     match req {
@@ -102,9 +120,13 @@ fn nothing_set(args: &PlayBackCmd) -> bool {
     return !args.next && !args.prev && !args.toggle;
 }
 
-pub async fn modify_playback(spotify: &AuthCodeSpotify, args: &PlayBackCmd) {
+pub async fn modify_playback(
+    spotify: &AuthCodeSpotify,
+    args: &PlayBackCmd,
+    prefered_dev: Option<String>,
+) {
     let pb_ctx = get_pb_ctx(&spotify).await;
-    let devs = get_devices(&spotify).await;
+    let dev = get_device(&spotify, prefered_dev).await;
 
     if args.prev && args.next {
         println!("ERROR: both prev and next specified, not sure what you expect...");
@@ -115,7 +137,7 @@ pub async fn modify_playback(spotify: &AuthCodeSpotify, args: &PlayBackCmd) {
     }
 
     if args.toggle || nothing_set(args) {
-        toggle_playback(&spotify, pb_ctx, devs).await;
+        toggle_playback(&spotify, pb_ctx, dev).await;
     }
 
     let post_ctx = get_cp_ctx(&spotify).await;

@@ -4,11 +4,12 @@ mod playbackcmd;
 use crate::infocmd::print_info;
 use crate::playbackcmd::modify_playback;
 use clap::{Parser, Subcommand};
-use rspotify::{prelude::*, AuthCodeSpotify, Config, Credentials, OAuth};
+use home::home_dir;
+use rspotify::{prelude::*, AuthCodeSpotify, Config as RSptConfig, Credentials, OAuth};
+use serde::Deserialize;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-const CACHE_PATH: &str = "/home/bkitor/.config/bkspt/.spotify_token_cache.json";
 const SCOPES: [&str; 14] = [
     "playlist-read-collaborative",
     "playlist-read-private",
@@ -69,8 +70,20 @@ fn build_scopes() -> HashSet<String> {
     return hs;
 }
 
+#[derive(Deserialize, Debug)]
+struct Config {
+    client_id: String,
+    client_secret: String,
+    reddirect_uri: String,
+    prefered_device: Option<String>,
+}
+
 #[tokio::main]
 async fn main() {
+    // Rework duplicate error handling with ? operator
+
+    // Tab aligned output (find crate?)
+
     // start album playback
     // start album/artist/song radio
     //
@@ -81,15 +94,25 @@ async fn main() {
 
     let args = Args::parse();
 
-    // Setup spotify client and auth
-    let creds = Credentials::from_env().unwrap();
-    let oauth = OAuth::from_env(build_scopes()).unwrap();
-    let config = Config {
-        cache_path: PathBuf::from(CACHE_PATH),
+    let cfg_file: PathBuf = home_dir().unwrap().join(".config/spcli/config.toml");
+    let cfg_toml_str = std::fs::read_to_string(cfg_file).unwrap();
+    let config: Config = toml::from_str(&cfg_toml_str).unwrap();
+
+    let creds = Credentials::new(&config.client_id, &config.client_secret);
+    let oauth = OAuth {
+        scopes: build_scopes(),
+        redirect_uri: config.reddirect_uri.clone(),
+        ..Default::default()
+    };
+    let cache_token_file: PathBuf = home_dir()
+        .unwrap()
+        .join(".config/spcli/.spotify_token_cache.json");
+    let rspt_config = RSptConfig {
+        cache_path: PathBuf::from(cache_token_file),
         token_cached: true,
         ..Default::default()
     };
-    let spotify = AuthCodeSpotify::with_config(creds, oauth, config);
+    let spotify = AuthCodeSpotify::with_config(creds, oauth, rspt_config);
     let url = spotify.get_authorize_url(false).unwrap();
     spotify.prompt_for_token(&url).await.unwrap();
     let _ = spotify.write_token_cache();
@@ -105,6 +128,6 @@ async fn main() {
 
     match cmd {
         Command::Info(c) => print_info(&spotify, &c).await,
-        Command::PlayBack(c) => modify_playback(&spotify, &c).await,
+        Command::PlayBack(c) => modify_playback(&spotify, &c, config.prefered_device).await,
     }
 }
